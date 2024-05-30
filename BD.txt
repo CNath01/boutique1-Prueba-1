@@ -1,0 +1,117 @@
+-- Crear la tabla administradores
+CREATE TABLE administradores (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(100) NOT NULL
+);
+
+-- Crear la tabla prendas
+CREATE TABLE prendas (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    descripcion TEXT,
+    precio NUMERIC(10, 2) NOT NULL,
+    cantidad INT NOT NULL,
+	imagen_url VARCHAR(255)
+);
+
+-- Crear la tabla trabajadores
+CREATE TABLE trabajadores (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    puesto VARCHAR(100) NOT NULL,
+    password VARCHAR(100) NOT NULL
+);
+
+-- Crear la tabla proveedores
+CREATE TABLE proveedores (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    contacto VARCHAR(100),
+    telefono VARCHAR(20)
+);
+
+-- Crear la tabla registros_acciones
+CREATE TABLE registros_acciones (
+    id SERIAL PRIMARY KEY,
+    usuario VARCHAR(100) NOT NULL,
+    tipo_accion VARCHAR(20) NOT NULL,
+    tabla_modificada VARCHAR(100) NOT NULL,
+    email_modificado VARCHAR(100),
+    password_modificado VARCHAR(100),
+    fecha_hora TIMESTAMP NOT NULL
+);
+CREATE OR REPLACE FUNCTION obtener_nombre_administrador(email_administrador VARCHAR) RETURNS TEXT AS $$
+DECLARE
+    nombre_administrador TEXT;
+BEGIN
+    SELECT nombre INTO nombre_administrador FROM administradores WHERE email = email_administrador;
+    RETURN nombre_administrador;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION registrar_insercion() RETURNS TRIGGER AS $$
+DECLARE
+    admin_nombre TEXT;
+BEGIN
+    -- Obtener el nombre del administrador que inició sesión desde la variable de sesión
+    SELECT current_setting('admin_name') INTO admin_nombre;
+
+    -- Insertar el registro de acción en la tabla registros_acciones
+    INSERT INTO registros_acciones (nombre_administrador, tipo_accion, tabla_modificada, email_modificado, password_modificado, fecha_hora)
+    VALUES (COALESCE(admin_nombre, 'Administrador Desconocido'), 'insertar', TG_TABLE_NAME, NEW.email, NEW.password, CURRENT_TIMESTAMP);
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION registrar_eliminacion() RETURNS TRIGGER AS $$
+DECLARE
+    admin_nombre TEXT;
+BEGIN
+    -- Obtener el nombre del administrador que realiza la eliminación
+    admin_nombre := obtener_nombre_administrador(OLD.email);
+
+    -- Insertar el registro de acción en la tabla registros_acciones
+    INSERT INTO registros_acciones (nombre_administrador, tipo_accion, tabla_modificada, email_modificado, password_modificado, fecha_hora)
+    VALUES (COALESCE(admin_nombre, 'Administrador Desconocido'), 'eliminar', TG_TABLE_NAME, OLD.email, OLD.password, CURRENT_TIMESTAMP);
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION registrar_modificacion() RETURNS TRIGGER AS $$
+DECLARE
+    admin_nombre TEXT;
+BEGIN
+    -- Obtener el nombre del administrador que realiza la modificación
+    admin_nombre := obtener_nombre_administrador(NEW.email);
+
+    -- Insertar el registro de acción en la tabla registros_acciones
+    INSERT INTO registros_acciones (nombre_administrador, tipo_accion, tabla_modificada, email_modificado, password_modificado, fecha_hora)
+    VALUES (COALESCE(admin_nombre, 'Administrador Desconocido'), 'modificar', TG_TABLE_NAME, NEW.email, NEW.password, CURRENT_TIMESTAMP);
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE TRIGGER registrar_nueva_prenda
+AFTER INSERT ON prendas
+FOR EACH ROW
+EXECUTE FUNCTION registrar_insercion();
+
+CREATE TRIGGER registrar_eliminacion_prenda
+BEFORE DELETE ON prendas
+FOR EACH ROW
+EXECUTE FUNCTION registrar_eliminacion();
+
+CREATE TRIGGER registrar_modificacion_prenda
+BEFORE UPDATE ON prendas
+FOR EACH ROW
+EXECUTE FUNCTION registrar_modificacion();
+
